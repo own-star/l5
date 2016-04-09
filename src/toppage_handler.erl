@@ -34,22 +34,25 @@ act(<<"insert">>, Val, Req) ->
 	Key = binary_to_list(proplists:get_value(<<"key">>, Val)),
 	Value = binary_to_list(proplists:get_value(<<"value">>, Val)),
 	Response = l5_emo_server:put_emo({Key,Value},60),
+	ResponseBin = atom_to_binary(Response,utf8),
 	cowboy_req:reply(200, [
 		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
-	], atom_to_binary(Response,utf8), Req);
+	], <<ResponseBin/binary,10>>, Req);
 act(<<"lookup_by_date">>, Val, Req) ->
 	Date_from = proplists:get_value(<<"date_from">>, Val),
 	Date_to = proplists:get_value(<<"date_to">>, Val),
 	{ok, Response} = l5_emo_server:get_by_date(todate(Date_from,<<>>,[],[]),todate(Date_to,<<>>,[],[])),
+	ResponseBin = tobin(Response,<<>>),
 	cowboy_req:reply(200, [
 		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
-	], tobin(Response,<<>>), Req);
+	], <<ResponseBin/binary,10>>, Req);
 act(<<"lookup">>, Val, Req) ->
 	Key = binary_to_list(proplists:get_value(<<"key">>, Val)),
 	Response = l5_emo_server:get_emo(Key),
+	ResponseBin = atom_to_binary(Response,utf8),
 	cowboy_req:reply(200, [
 		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
-	], atom_to_binary(Response,utf8), Req).
+	], <<ResponseBin/binary,10>>, Req).
 
 todate(<<"/",Rest/binary>>,Acc,[],_AccT) ->
 	todate(Rest,<<>>,[binary_to_integer(Acc)],[]);
