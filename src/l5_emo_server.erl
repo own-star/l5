@@ -61,7 +61,7 @@ handle_call({get, Who}, _From, Tab) ->
 		[{_,_,Exp}] when CTime > Exp ->
 			no_tuple_found;
 		[{_,Status,_}] ->
-			binary_to_list(Status)
+			binary_to_atom(Status,utf8)
 	end,
 	{reply, Reply, Tab};
 

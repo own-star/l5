@@ -7,8 +7,6 @@
 -export([handle/2]).
 -export([terminate/3]).
 
--define(CACHE, "l5_emo_server").
-
 init(_Type, Req, []) ->
 	{ok, Req, undefined}.
 
@@ -16,28 +14,13 @@ handle(Req, State) ->
 	{Method, Req2} = cowboy_req:method(Req),
 	HasBody = cowboy_req:has_body(Req2),
 	{ok, Req3} = maybe_echo(Method, HasBody, Req2),
-%{ok, Req3} = cowboy_req:reply(200, [
-%		{<<"content-type">>, <<"text/plain">>}
-%%	], list_to_binary(Req2), Req),
-%	], <<"Hello world!", Method/binary, 10>>, Req),
 	{ok, Req3, State}.
 
 maybe_echo(<<"POST">>, true, Req) ->
-%	{ok, PostVals, Req2} = cowboy_req:body_qs(Req),
-%	Echo = proplists:get_value(<<"action">>, PostVals),
-	{Args, Req1} = cowboy_req:qs_vals(Req),
+	{_Args, Req1} = cowboy_req:qs_vals(Req),
 	{ok, Bin, Req2} = cowboy_req:body(Req1),
 	Val = jsx:decode(Bin),
-	io:format("Args: ~p~n, Vals: ~p~n", [Args, Val]),
 	Action = proplists:get_value(<<"action">>, Val),
-%	Key = proplists:get_value(<<"key">>, Val),
-%	Value = proplists:get_value(<<"value">>, Val),
-%	Ract(Action, Val),
-%	Json = jsx:encode(Response),
-%	{ok, Req3} = cowboy_req:reply(200, [], Response, Req2),
-%	{ok, Req3, Req};
-
-
 	act(Action, Val, Req2);
 maybe_echo(<<"POST">>, false, Req) ->
 	cowboy_req:reply(400, [], <<"Missing body.">>, Req);
@@ -48,17 +31,49 @@ maybe_echo(_, _, Req) ->
 act(undefined, _Val, Req) ->
 	cowboy_req:reply(400, [], <<"Missing action parameter.">>, Req);
 act(<<"insert">>, Val, Req) ->
-	Action = binary_to_list(proplists:get_value(<<"action">>, Val)),
 	Key = binary_to_list(proplists:get_value(<<"key">>, Val)),
 	Value = binary_to_list(proplists:get_value(<<"value">>, Val)),
-	io:format("Action: ~p, Key: ~p, Value ~p~n", [Action, Key, Value]),
 	Response = l5_emo_server:put_emo({Key,Value},60),
-	io:format("Response: ~p~n", [Response]),
+	cowboy_req:reply(200, [
+		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
+	], atom_to_binary(Response,utf8), Req);
+act(<<"lookup_by_date">>, Val, Req) ->
+	Date_from = proplists:get_value(<<"date_from">>, Val),
+	Date_to = proplists:get_value(<<"date_to">>, Val),
+	{ok, Response} = l5_emo_server:get_by_date(todate(Date_from,<<>>,[],[]),todate(Date_to,<<>>,[],[])),
+	cowboy_req:reply(200, [
+		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
+	], tobin(Response,<<>>), Req);
+act(<<"lookup">>, Val, Req) ->
+	Key = binary_to_list(proplists:get_value(<<"key">>, Val)),
+	Response = l5_emo_server:get_emo(Key),
 	cowboy_req:reply(200, [
 		{<<"content-type">>, <<"text/plain; charset=utf-8">>}
 	], atom_to_binary(Response,utf8), Req).
 
+todate(<<"/",Rest/binary>>,Acc,[],_AccT) ->
+	todate(Rest,<<>>,[binary_to_integer(Acc)],[]);
+todate(<<"/",Rest/binary>>,Acc,AccD,_AccT) ->
+	todate(Rest,<<>>,[binary_to_integer(Acc)|AccD],[]);
+todate(<<" ",Rest/binary>>,Acc,AccD,_AccT) ->
+	todate(Rest,<<>>,[binary_to_integer(Acc)|AccD],[]);
+todate(<<":",Rest/binary>>,Acc,AccD,AccT) ->
+	todate(Rest,<<>>,AccD,[binary_to_integer(Acc)|AccT]);
+todate(<<X,Rest/binary>>,Acc,AccD,AccT) ->
+	todate(Rest,<<Acc/binary,X>>,AccD,AccT);
+todate(<<>>,Acc,AccD,AccT) ->
+	{list_to_tuple(lists:reverse(AccD)), list_to_tuple(lists:reverse([binary_to_integer(Acc)|AccT]))}.
 
+tobin([{Name,State}|T],<<>>) ->
+	BinN = list_to_binary(Name),
+	BinS = list_to_binary(State),
+	tobin(T,<<"{",BinN/binary,",",BinS/binary,"}">>);
+tobin([{Name,State}|T],Acc) ->
+	BinN = list_to_binary(Name),
+	BinS = list_to_binary(State),
+	tobin(T,<<Acc/binary,",{",BinN/binary,",",BinS/binary,"}">>);
+tobin([],Acc) ->
+	<<"[",Acc/binary,"]">>.
 
 terminate(_Reason, _Req, _State) ->
 	ok.
